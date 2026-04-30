@@ -1,0 +1,8 @@
+.Rhistory
+task1.log
+task1_cache/
+task1_fig_neg_alpham0p5.pdf
+task1_fig_neg_alpham1.pdf
+task1_fig_nonneg_alpha.pdf
+task1_files/
+task1_outdeg_violin.pdf

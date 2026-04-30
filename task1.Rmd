@@ -1,0 +1,424 @@
+---
+title: "Network Modelling Assignment 2"
+subtitle: "Task 1: Geometrically Weighted Terms in ERGMs"
+author: "Group 19 | Semeli Ergatoudi, Katharina Krenzer, Duarte Santos Albuquerque"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo      = TRUE,
+  warning   = FALSE,
+  message   = FALSE,
+  fig.align = "center",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+```{r libraries}
+# stocnet suite
+library(manynet)
+library(netrics)   # degree/density functions moved here in manynet 2.0.0
+library(autograph)
+
+# sna suite
+library(network)
+library(ergm)
+
+# plotting and presentation
+library(ggplot2)
+library(patchwork)
+library(texreg)
+library(broom)
+library(dplyr)
+library(tidyr)
+
+set.seed(42)
+DATA <- "../Glasgow/"
+```
+
+# Data Preparation
+
+```{r load-data}
+# Read adjacency matrices with manynet
+friendship <- read_matrix(paste0(DATA, "f1.csv"), header = FALSE)
+
+# Read node attributes
+attributes <- read.csv(paste0(DATA, "demographic.csv"), header = TRUE)
+alcohol     <- read.csv(paste0(DATA, "alcohol.csv"),     header = TRUE)
+attributes$alcohol <- alcohol$Wave.1
+
+# Basic descriptives using manynet / netrics
+nvertices <- net_nodes(friendship)
+nvertices
+
+nedges <- net_ties(friendship)
+nedges
+
+density <- net_by_density(friendship)   # moved to netrics in manynet 2.0.0
+density
+
+outdegree <- node_by_outdegree(friendship, normalized = FALSE)
+mean(outdegree)
+sd(outdegree)
+
+indegree <- node_by_indegree(friendship, normalized = FALSE)
+mean(indegree)
+sd(indegree)
+```
+
+```{r degree-plot, fig.cap="Out-degree and in-degree distributions of the Glasgow Wave 1 network."}
+plot(outdegree) + plot(indegree)
+```
+
+```{r network-object}
+# Add a name column so join_nodes can match by node index
+attributes$name <- 1:nvertices
+
+# Create network object for ERGM estimation (sna suite)
+friendship_sna <- friendship |>
+  mutate_nodes(name = 1:nvertices) |>
+  join_nodes(attributes) |>
+  as_network()
+
+friendship_sna
+```
+
+---
+
+# Part (1): Change Statistic of `gwodegree`
+
+## (i) Analytical Derivation
+
+The GWD network statistic is defined as:
+
+$$
+s_{\text{GWD}}(x,\,\alpha) \;=\; e^{\alpha}\sum_{k=1}^{n}\!\Big\{1-(1-e^{-\alpha})^k\Big\}\,D_k^{\text{out}}(x)
+$$
+
+where $D_k^{\text{out}}(x)$ is the number of nodes with exactly out-degree $k$.
+
+**Adding a directed edge to a sender node with current out-degree $k$:**
+
+- $D_k^{\text{out}}$ decreases by 1 (the node leaves degree class $k$).
+- $D_{k+1}^{\text{out}}$ increases by 1 (the node enters degree class $k+1$).
+
+The change statistic is therefore:
+
+$$
+\begin{aligned}
+\delta_{\text{GWD}}(k,\alpha)
+  &= s_{\text{GWD}}(x+\text{edge},\,\alpha) - s_{\text{GWD}}(x,\,\alpha) \\[4pt]
+  &= e^{\alpha}\Big[\big\{1-(1-e^{-\alpha})^{k+1}\big\}
+     - \big\{1-(1-e^{-\alpha})^{k}\big\}\Big] \\[4pt]
+  &= e^{\alpha}\Big[(1-e^{-\alpha})^{k} - (1-e^{-\alpha})^{k+1}\Big] \\[4pt]
+  &= e^{\alpha}\,(1-e^{-\alpha})^{k}\,\underbrace{\big[1-(1-e^{-\alpha})\big]}_{=\,e^{-\alpha}}
+   = \boxed{\;(1-e^{-\alpha})^{k}\;}
+\end{aligned}
+$$
+
+## (ii) Plots of the Change Statistic
+
+```{r change-stat-setup}
+delta_GWD <- function(k, alpha) (1 - exp(-alpha))^k
+
+alpha_vals <- c(-1, -0.5, 0, 0.1, 0.2, 0.3, 0.5, log(2), 1, 2, 3)
+alpha_labs <- c("-1", "-0.5", "0", "0.1", "0.2", "0.3",
+                "0.5", "ln2",  "1", "2",   "3")
+
+# Use the range of observed out-degrees
+k_max   <- max(outdegree)
+k_range <- 0:k_max
+
+df_plot <- do.call(rbind, lapply(seq_along(alpha_vals), function(i) {
+  data.frame(
+    k     = k_range,
+    delta = delta_GWD(k_range, alpha_vals[i]),
+    alpha = factor(alpha_labs[i], levels = alpha_labs),
+    group = ifelse(alpha_vals[i] < 0, "negative", "non-negative")
+  )
+}))
+```
+
+### Negative decay values (one figure per value)
+
+```{r fig-neg-m1, fig.cap="Change statistic for alpha = -1."}
+df_sub <- df_plot |> filter(alpha == "-1")
+ggplot(df_sub, aes(x = k, y = delta)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  geom_line(colour = "steelblue", linewidth = 0.9) +
+  geom_point(colour = "steelblue", size = 2.5) +
+  labs(title    = expression("Change statistic," ~ alpha == -1),
+       subtitle = "Negative decay value",
+       x = "Current out-degree k",
+       y = expression(delta[GWD](k, alpha))) +
+  theme_bw(base_size = 13)
+```
+
+```{r fig-neg-m05, fig.cap="Change statistic for alpha = -0.5."}
+df_sub <- df_plot |> filter(alpha == "-0.5")
+ggplot(df_sub, aes(x = k, y = delta)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey60") +
+  geom_line(colour = "tomato", linewidth = 0.9) +
+  geom_point(colour = "tomato", size = 2.5) +
+  labs(title    = expression("Change statistic," ~ alpha == -0.5),
+       subtitle = "Negative decay value",
+       x = "Current out-degree k",
+       y = expression(delta[GWD](k, alpha))) +
+  theme_bw(base_size = 13)
+```
+
+### Non-negative decay values (one combined figure)
+
+```{r fig-nonneg, fig.cap="Change statistic for all non-negative decay values. Different colours and linetypes distinguish alpha values."}
+df_nonneg <- df_plot |> filter(group == "non-negative")
+
+ggplot(df_nonneg, aes(x = k, y = delta, colour = alpha, linetype = alpha)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2.5) +
+  scale_colour_brewer(palette = "Set1", name = expression(alpha)) +
+  scale_linetype_discrete(name = expression(alpha)) +
+  labs(title = "Change statistic - non-negative decay values",
+       x = "Current out-degree k",
+       y = expression(delta[GWD](k, alpha))) +
+  theme_bw(base_size = 13)
+```
+
+## (iii) Main Takeaways
+
+The change statistic $\delta_{\text{GWD}}(k,\alpha)=(1-e^{-\alpha})^k$ reveals how the decay
+parameter $\alpha$ governs the marginal contribution of an additional out-edge to an
+already-popular sender node.
+
+**Non-negative $\alpha$.**
+When $\alpha>0$ the base $(1-e^{-\alpha})\in(0,1)$, so the change statistic is always positive
+and decreases *monotonically* with $k$.
+Adding an edge from a node with $k=0$ always contributes the maximum value of 1, regardless
+of $\alpha$, while adding from a high-degree node contributes progressively less.
+The rate of this decay is entirely determined by $\alpha$:
+
+- *Small* $\alpha$ (e.g.\ $\alpha=0.1$): the base is close to 0, so $\delta$ drops almost
+  immediately to near-zero after $k=0$.  Only ties sent by near-isolated nodes influence the
+  statistic; hubs are practically invisible.
+- *Large* $\alpha$ (e.g.\ $\alpha=2$ or $\alpha=3$): the base is close to 1, so $\delta$
+  remains substantial even at high $k$.  Both low- and high-degree senders contribute almost
+  equally, and the statistic is sensitive to the entire out-degree spectrum.
+- *$\alpha=\ln 2$*: the base equals $\frac{1}{2}$, giving a clean geometric halving with each
+  additional out-edge --- a natural "neutral" reference.
+
+When $\alpha=0$ the change statistic is 0 for all $k>0$: adding an edge from any already-active
+sender has no effect on the statistic whatsoever.
+
+**Negative $\alpha$.**
+The base $(1-e^{-\alpha})<0$, so $\delta$ *alternates in sign* (positive for even $k$,
+negative for odd $k$) and grows in absolute magnitude.
+This has no natural interpretation in terms of a degree distribution; the statistic oscillates
+rather than capturing a smooth preferential-attachment or equalisation mechanism.
+
+**Summary.**
+The decay parameter acts as a "bandwidth" on the out-degree axis.
+Larger $\alpha$ extends the effective range over which additional ties are counted, making the
+statistic more sensitive to hubs; smaller positive $\alpha$ concentrates the statistic on
+low-degree nodes.
+Negative $\alpha$ produces counter-intuitive alternating behaviour and should be avoided in
+substantive applications.
+
+## (iv) Choosing $\alpha$ for an Activity Effect
+
+An *activity* effect means that nodes who are already highly active (high out-degree) are *more*
+likely to send further nominations.
+The goal is for the `gwodegree` statistic to be *driven by* high-out-degree nodes, so that its
+coefficient $\theta_{\text{GWD}}$ can capture this self-reinforcing dynamic.
+
+The change statistic $(1-e^{-\alpha})^k$ is smallest for large $k$ when $\alpha$ is small,
+and approaches 1 for all $k$ as $\alpha\to\infty$.
+For `gwodegree` to be sensitive to hubs we need $\delta$ to remain meaningfully large at the
+high end of the observed out-degree range.
+
+In the Glasgow Wave 1 network the maximum out-degree is `r k_max`.
+At $\alpha=0.3$: $\delta(6,\,0.3)=(1-e^{-0.3})^6\approx 0.0003$ -- the sixth tie is essentially
+invisible.
+At $\alpha=1$: $\delta(6,\,1)\approx 0.063$; at $\alpha=2$: $\approx 0.46$; at $\alpha=3$:
+$\approx 0.78$.
+
+Therefore, to model an activity effect where *high out-degree nodes drive the statistic*,
+**$\alpha$ should be chosen large** (at least $\alpha=1$, preferably $\alpha=2$ or $\alpha=3$
+for this network).
+With a large, positive $\theta_{\text{GWD}}$ and a large $\alpha$, the model assigns higher
+probability to networks in which already-active senders continue to accumulate further
+nominations --- a "rich-get-richer" / Matthew effect in out-degree.
+
+Negative $\alpha$ must be avoided: the alternating-sign behaviour of $\delta$ makes
+$\theta_{\text{GWD}}$ uninterpretable and estimation prone to degeneracy.
+
+---
+
+# Part (2): Effect of the `gwodegree` Coefficient on the Out-Degree Distribution
+
+## (i) M1: Edges-Only Reference Model
+
+```{r m1, cache=TRUE}
+M1 <- ergm(friendship_sna ~ edges,
+           control = control.ergm(seed = 42))
+summary(M1)
+```
+
+## (ii) M2: Fix Decay = 0.3, Vary `gwodegree` Coefficient
+
+The `gwodegree` coefficient is fixed via `offset()` while only the `edges` parameter is
+re-estimated, ensuring the expected network density matches the observed density.
+
+```{r m2a, cache=TRUE}
+M2a <- ergm(
+  friendship_sna ~ edges + offset(gwodegree(0.3, fixed = TRUE)),
+  offset.coef = c(-2),
+  control     = control.ergm(seed = 42)
+)
+summary(M2a)
+```
+
+```{r m2b, cache=TRUE}
+M2b <- ergm(
+  friendship_sna ~ edges + offset(gwodegree(0.3, fixed = TRUE)),
+  offset.coef = c(2),
+  control     = control.ergm(seed = 42)
+)
+summary(M2b)
+```
+
+**Model coefficient table:**
+
+```{r coef-table, results='asis'}
+screenreg(list(M1, M2a, M2b),
+          custom.model.names = c("M1", "M2a (theta=-2)", "M2b (theta=+2)"),
+          caption = "Estimated edges coefficients. gwodegree coefficients are fixed via offset.")
+```
+
+## (iii) Simulate 100 Networks and Plot Out-Degree Distributions
+
+Following the practical, we use `ergm::simulate_formula()` with the `coef` argument to fix
+parameter values.
+
+```{r simulate, cache=TRUE}
+NSIM <- 100
+
+# simulate_formula() with coef fixes all parameter values
+sim_M1  <- simulate_formula(
+  friendship_sna ~ edges,
+  coef    = coef(M1),
+  nsim    = NSIM,
+  output  = "network"
+)
+
+sim_M2a <- simulate_formula(
+  friendship_sna ~ edges + offset(gwodegree(0.3, fixed = TRUE)),
+  coef    = c(coef(M2a)["edges"], -2),
+  nsim    = NSIM,
+  output  = "network"
+)
+
+sim_M2b <- simulate_formula(
+  friendship_sna ~ edges + offset(gwodegree(0.3, fixed = TRUE)),
+  coef    = c(coef(M2b)["edges"], 2),
+  nsim    = NSIM,
+  output  = "network"
+)
+```
+
+```{r outdeg-data}
+# Compute node count by out-degree for each simulated network
+# (simulated networks are 'network' objects -> use sna::degree)
+outdeg_counts <- function(sim_list, label) {
+  k_max_obs <- max(outdegree)
+  do.call(rbind, lapply(seq_len(NSIM), function(i) {
+    degs <- sna::degree(sim_list[[i]], cmode = "outdegree")
+    tab  <- tabulate(degs + 1L, nbins = k_max_obs + 1L)
+    data.frame(outdegree = 0:k_max_obs, count = tab, sim = i, model = label)
+  }))
+}
+
+df_sim <- bind_rows(
+  outdeg_counts(sim_M1,  "M1: edges only"),
+  outdeg_counts(sim_M2a, "M2a: theta_GWD = -2"),
+  outdeg_counts(sim_M2b, "M2b: theta_GWD = +2")
+) |>
+  mutate(model = factor(model,
+                        levels = c("M1: edges only",
+                                   "M2a: theta_GWD = -2",
+                                   "M2b: theta_GWD = +2")))
+
+# Observed node counts by out-degree
+obs_tab <- data.frame(
+  outdegree = 0:max(outdegree),
+  count     = tabulate(outdegree + 1L, nbins = max(outdegree) + 1L)
+)
+```
+
+```{r violin-plot, fig.height=10, fig.cap="Violin plots of node count by out-degree across 100 simulated networks. Black diamonds show observed counts."}
+ggplot(df_sim, aes(x = factor(outdegree), y = count, fill = model)) +
+  geom_violin(scale = "width", alpha = 0.65, colour = NA) +
+  geom_point(
+    data        = obs_tab,
+    aes(x       = factor(outdegree), y = count),
+    inherit.aes = FALSE,
+    shape = 23, size = 3, fill = "black", colour = "white"
+  ) +
+  facet_wrap(~ model, ncol = 1) +
+  scale_fill_manual(
+    values = c("M1: edges only"       = "#377EB8",
+               "M2a: theta_GWD = -2"  = "#E41A1C",
+               "M2b: theta_GWD = +2"  = "#4DAF4A")
+  ) +
+  labs(title    = "Out-degree distribution: 100 simulated networks vs. observed",
+       subtitle = "Black diamonds = observed node counts",
+       x = "Out-degree", y = "Number of nodes") +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "none",
+        strip.text      = element_text(face = "bold"))
+```
+
+## (iv) Comparison and Interpretation
+
+The three models share the same observed density by construction (the `edges` coefficient is
+re-estimated in M2a/M2b to compensate for the `gwodegree` offset), yet they produce strikingly
+different out-degree distributions.
+
+**M1 -- edges only (reference).**
+With only the `edges` term the model is a directed Bernoulli random graph in which each dyad is
+independently connected with a constant probability $p=\text{logistic}(\hat\theta_{\text{edges}})$.
+This produces a Binomial -- and for small $p$ approximately Poisson -- out-degree distribution.
+In the Glasgow network ($n=129$, density $\approx 0.027$) the simulated distributions are
+compact, centred around 3--4, with very little mass above 6.
+The observed counts fall broadly within the simulated range, confirming the simple random
+graph as a valid baseline.
+
+**M2a ($\theta_{\text{GWD}}=-2$, decay $=0.3$).**
+A negative `gwodegree` coefficient *penalises* the GWD statistic.
+Because the change statistic $(1-e^{-0.3})^k$ is largest for $k=0$ and drops rapidly,
+penalising this term discourages ties sent from low-degree nodes while being less averse to
+ties from high-degree ones.
+The result is a more *heterogeneous*, right-skewed out-degree distribution: fewer nodes remain
+at degree 0 or 1, and more mass appears at moderate-to-high degrees.
+The distribution is broader than M1 and exhibits a heavier tail.
+
+**M2b ($\theta_{\text{GWD}}=+2$, decay $=0.3$).**
+A positive `gwodegree` coefficient *rewards* the GWD statistic.
+Because the reward is greatest for ties from low-degree senders, the model strongly favours
+nodes sending only a few ties and discourages further accumulation.
+The simulated distributions are markedly more *concentrated* than M1: most nodes cluster at a
+common moderate out-degree (2--4) with almost no nodes at 0 or at the upper tail.
+The variance of the out-degree distribution is substantially reduced compared to both M1 and M2a.
+
+**Comparison with a random network of the same density.**
+The Bernoulli baseline (M1) already produces a relatively narrow near-Poisson distribution.
+$\theta_{\text{GWD}}<0$ broadens and right-skews this distribution, introducing *activity
+heterogeneity*: some students nominate many friends while others nominate few.
+$\theta_{\text{GWD}}>0$ compresses it further, enforcing *homogeneous activity* across students.
+In substantive terms, a positive `gwodegree` coefficient captures a tendency toward equal
+participation, while a negative one allows hubs to emerge among senders.
