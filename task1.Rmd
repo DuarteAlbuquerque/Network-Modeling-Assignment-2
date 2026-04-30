@@ -105,7 +105,7 @@ $$
 
 where $D_k^{\text{out}}(x)$ is the number of nodes with exactly out-degree $k$.
 
-**Adding a directed edge to a sender node with current out-degree $k$:**
+**Adding a directed edge from a sender node with current out-degree $k$:**
 
 - $D_k^{\text{out}}$ decreases by 1 (the node leaves degree class $k$).
 - $D_{k+1}^{\text{out}}$ increases by 1 (the node enters degree class $k+1$).
