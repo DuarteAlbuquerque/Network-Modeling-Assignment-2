@@ -1,6 +1,5 @@
 ---
 title: "Network Modelling Assignment 2"
-subtitle: "Task 1: Geometrically Weighted Terms in ERGMs"
 author: "Group 19 | Semeli Ergatoudi, Katharina Krenzer, Duarte Santos Albuquerque"
 date: "`r Sys.Date()`"
 output:
@@ -9,6 +8,8 @@ output:
     toc_depth: 2
     number_sections: true
 ---
+
+# Task 1: Geometrically Weighted Terms in ERGMs
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
