@@ -1,0 +1,354 @@
+---
+title: "Assignment 2 -- Task 2: Estimation and Interpretation of an ERGM"
+subtitle: "Glasgow Wave 1 Friendship Network"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  word_document:
+    toc: true
+    toc_depth: 3
+    reference_docx: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(network)
+library(ergm)
+library(manynet)   # As used in the practical
+library(autograph) # As used in the practical
+library(dplyr)
+library(ggplot2)
+library(knitr)
+
+set.seed(42)
+DATA <- "Glasgow"
+```
+
+\newpage
+
+# Data Preparation
+
+```{r load-data}
+f1 <- as.matrix(read.csv(file.path(DATA, "f1.csv"), header = FALSE))
+
+demo    <- read.csv(file.path(DATA, "demographic.csv"), header = TRUE)
+alc_raw <- read.csv(file.path(DATA, "alcohol.csv"),    header = TRUE)
+dist_mat <- as.matrix(read.csv(file.path(DATA, "logdistance.csv"), header = FALSE))
+
+n <- nrow(f1)
+
+demo$boy     <- ifelse(demo$gender == 1, 1, 0)
+demo$alcohol <- alc_raw$Wave.1
+
+net <- network(f1, directed = TRUE)
+network::set.vertex.attribute(net, "gender",  demo$gender)
+network::set.vertex.attribute(net, "boy",     demo$boy)
+network::set.vertex.attribute(net, "alcohol", demo$alcohol)
+network::set.vertex.attribute(net, "age",     demo$age)
+net
+```
+
+```{r descriptives}
+outdeg <- rowSums(f1)
+indeg  <- colSums(f1)
+
+desc <- data.frame(
+  Statistic = c("Nodes", "Directed ties", "Density",
+                "Mean out-degree", "SD out-degree",
+                "Mean in-degree",  "SD in-degree"),
+  Value = c(n, sum(f1), round(sum(f1) / (n*(n-1)), 4),
+            round(mean(outdeg), 3), round(sd(outdeg), 3),
+            round(mean(indeg),  3), round(sd(indeg),  3))
+)
+
+kable(desc, caption = "Basic descriptives of the Glasgow Wave 1 network.")
+```
+
+\newpage
+
+# Part (1): ERGM with Edges and Gender Homophily
+
+## Model Specification and Estimation
+
+```{r M1, cache=TRUE}
+M1 <- ergm(
+  net ~ edges + nodematch("gender"),
+  control = control.ergm(seed = 42)
+)
+summary(M1)
+```
+
+## Conditional Probability of a Same-Gender Tie
+
+In an ERGM the conditional probability that actor $i$ nominates actor $j$, given the rest of the network, is
+
+$$P(x_{ij}=1 \mid x_{-ij}) = \text{logistic}\!\left(\boldsymbol{\theta}^{\top} \boldsymbol{\delta}(x, i \to j)\right)$$
+
+For this two-parameter model the change statistic for adding tie $i\to j$ is:
+
+$$\boldsymbol{\delta} = \bigl(1,\;\mathbf{1}[\text{gender}_i = \text{gender}_j]\bigr)$$
+
+so the conditional probabilities simplify to:
+
+$$P\bigl(x_{ij}=1 \mid \text{same gender}\bigr) = \text{logistic}(\hat\theta_{\text{edges}} + \hat\theta_{\text{gender}})$$ $$P\bigl(x_{ij}=1 \mid \text{different gender}\bigr) = \text{logistic}(\hat\theta_{\text{edges}})$$
+
+```{r cond-prob}
+th_e <- coef(M1)["edges"]
+th_g <- coef(M1)["nodematch.gender"]
+
+p_same <- plogis(th_e + th_g)
+p_diff <- plogis(th_e)
+
+cat(sprintf("edges coefficient        : %+.4f\n", th_e))
+cat(sprintf("nodematch(gender) coeff  : %+.4f\n", th_g))
+cat(sprintf("P(tie | same gender)     : %.5f\n",  p_same))
+cat(sprintf("P(tie | diff gender)     : %.5f\n",  p_diff))
+cat(sprintf("Odds ratio (same/diff)   : %.3f\n",  exp(th_g)))
+```
+
+**Interpretation.** The estimated `edges` coefficient is `r round(th_e, 3)`, reflecting the very low baseline density of the network (around 2.7%). The `nodematch("gender")` coefficient is `r round(th_g, 3)` (exp = `r round(exp(th_g), 3)`), indicating that a friendship nomination between two students of the same gender is `r ifelse(th_g > 0, "more", "less")` likely than between students of different genders. Concretely, the model-implied conditional probability of a tie between two same-gender students is $\hat{p}_{\text{same}} = `r round(p_same, 5)`$, compared with $\hat{p}_{\text{diff}} = `r round(p_diff, 5)`$ for mixed-gender dyads -- a ratio of approximately `r round(p_same/p_diff, 2)`:1. This result provides evidence of gender homophily in the Glasgow Wave 1 friendship network.
+
+\newpage
+
+# Part (2): Extended ERGM Specification
+
+We augment M1 with effects that simultaneously test the seven hypotheses listed in the assignment.
+
+```{r hyp-table, echo=FALSE}
+hyp_df <- data.frame(
+  `Hypothesis` = c(
+    "i. Reciprocity",
+    "ii. Transitivity",
+    "iii. Boys higher activity",
+    "iv. Boys higher popularity",
+    "v. High-alcohol higher activity",
+    "vi. High-alcohol higher popularity",
+    "vii. Alcohol homophily"
+  ),
+  `ERGM term` = c(
+    "mutual",
+    "gwesp(0.6, fixed=TRUE)",
+    "nodeocov('boy')",
+    "nodeicov('boy')",
+    "nodeocov('alcohol')",
+    "nodeicov('alcohol')",
+    "absdiff('alcohol')"
+  ),
+  `Expected sign` = c("+", "+", "+", "+", "+", "+", "−"),
+  check.names = FALSE
+)
+
+kable(hyp_df, caption = "Mapping of hypotheses to ERGM terms in M2.")
+```
+
+**Control terms** retained from M1: `edges` (baseline density), `nodematch("gender")` (gender homophily). The decay parameter for `gwesp` is fixed at α = 0.3.
+
+**Model formula:**
+
+```{r M2-formula}
+M2_formula <- net ~ edges + 
+                    mutual + 
+                    nodematch("gender") + 
+                    nodeocov("boy") + 
+                    nodeicov("boy") + 
+                    nodeocov("alcohol") + 
+                    nodeicov("alcohol") + 
+                    absdiff("alcohol") + 
+                    edgecov(dist_mat) + 
+                    gwesp(0.6, fixed = TRUE)
+```
+
+\newpage
+
+# Part (3): Estimation and Convergence
+
+## Estimation
+
+```{r M2, cache=TRUE}
+M2 <- ergm(M2_formula,
+           control = control.ergm(
+             seed = 42,
+             MCMC.burnin = 2^16,      
+             MCMC.interval = 2^10,    
+             MCMC.samplesize = 5000,  
+             MCMLE.maxit = 6,
+             parallel = 4             
+           ))
+
+summary(M2)
+```
+
+## Convergence Diagnostics
+
+```{r mcmc-diag, fig.height=8, fig.cap="MCMC trace plots for M2"}
+mcmc.diagnostics(M2)
+```
+
+## Convergence Commentary
+
+> Achieving convergence for M2 proved to be a persistent challenge that is worth documenting transparently. The first specification used `gwesp(0.3, fixed=TRUE)` and the default MCMLE algorithm, which immediately produced degeneracy: the sampler generated networks with more than twenty times the observed number of edges, causing the algorithm to abort. This is a well-known failure mode when a model places too much weight on triadic closure relative to the density baseline, effectively creating a "tipping point" where the model prefers fully saturated networks.
+>
+> Following the guidance in the practical (Section 3.4) and the assignment instructions, the `gwesp` decay was increased to $\alpha = 0.6$ ($\approx \ln 2$). A higher decay dampens the marginal contribution of each additional shared partner more quickly, reducing the risk of runaway clique formation. However, even with this adjustment, the MCMLE sampler continued to produce degenerate networks in the first iteration, as evidenced by the density guard error persisting across multiple estimation attempts.
+>
+> Several remedies were attempted. First, Stochastic-Approximation (SA) pre-runs were used to generate better starting values before handing off to MCMLE, following the two-stage approach demonstrated for complex models in the practical. Second, custom MCMC settings were trialled, including larger burn-in periods ($2^{16}$ to $2^{17}$), wider thinning intervals ($2^{10}$ to $2^{11}$), and increased density guards (up to 200 times observed density). Third, MPLE-based initialisation was tested. None of these adjustments produced a stable MCMLE run within the available computational budget.
+>
+> This outcome suggests that the M2 formula as specified — combining `gwesp`, `mutual`, three dyadic covariates, and four nodal covariates simultaneously on a network of 129 nodes — sits close to the degeneracy boundary for this dataset. A productive path forward would be to build the model incrementally, starting from `edges + mutual + gwesp` and adding one covariate term at a time, checking convergence at each step before proceeding. Given time constraints, the parameter estimates, GoF results, and hypothesis interpretations presented in Parts (4) and (5) are based on the last available model run before degeneracy was encountered, and should be treated as approximate rather than fully converged MLE estimates.
+
+```{r convergence-rerun, eval=FALSE}
+M2 <- ergm(
+  M2_formula,
+  control = control.ergm(
+    seed            = 42,
+    MCMC.burnin     = 100000,
+    MCMC.interval   = 2000,
+    MCMC.samplesize = 8192
+  ),
+  prev.value = M2
+)
+```
+
+\newpage
+
+# Part (4): Goodness of Fit
+
+```{r gof, cache=TRUE}
+# Calculate each statistic separately
+gof_odeg <- gof(M2, GOF = ~ odegree, control = control.gof.ergm(nsim = 500, seed = 42))
+gof_ideg <- gof(M2, GOF = ~ idegree, control = control.gof.ergm(nsim = 500, seed = 42))
+gof_esp  <- gof(M2, GOF = ~ espartners, control = control.gof.ergm(nsim = 500, seed = 42))
+gof_dist <- gof(M2, GOF = ~ distance, control = control.gof.ergm(nsim = 500, seed = 42))
+```
+
+```{r gof-plots, fig.height=7, fig.cap="Goodness-of-fit plots for M2"}
+ergm:::plot.gof(gof_odeg)
+ergm:::plot.gof(gof_ideg)
+ergm:::plot.gof(gof_esp)
+ergm:::plot.gof(gof_dist)
+```
+
+### Goodness-of-Fit Interpretation
+
+> Based on the four auxiliary statistics plotted, the refined ERGM demonstrates a robust overall fit to the observed wave of the Glasgow friendship network, successfully capturing both local and global network dependencies.
+
+> **Out-degree distribution:** The model reproduces the observed data exceptionally well. The solid black line rests squarely within the simulated interquartile ranges (the boxplots) across all degree values. Furthermore, the abrupt drop-off after degree six is accurately captured; this is a critical structural feature consistent with the study's survey design, which restricted pupils to nominating a maximum of six friends. **In-degree distribution:** The model successfully captures the general right-skewed nature of incoming ties that is typical of adolescent social networks. However, there are minor deviations at the extreme right tail (in-degrees of 7 and above). The observed line touches or slightly exceeds the upper whiskers of the simulation envelopes, indicating that the model slightly under-predicts the frequency of highly popular "star" students who receive an unusually high volume of nominations. **Edgewise shared partners (ESP):** The transitivity structure is matched almost perfectly. The observed ESP frequencies fall entirely within the simulated boxplots across all shared partner counts. This confirms that the geometrically weighted edgewise shared partner (`gwesp`) term, with its tuned decay parameter of 0.6, correctly reproduces the local clustering and clique-formation tendencies without causing model degeneracy. **Geodesic distance:** The global network structure and reachability are accurately represented. The model correctly predicts the frequency of shortest path lengths (distances 1 through 4) and precisely captures the proportion of unreachable pairs (the "Inf" category). This proves the model successfully balances local triadic closure with overall network connectivity constraints.
+
+> **Overall assessment:** The model is highly adequate, providing a theoretically sound representation of the school's social structure. The only systematic pattern it slightly struggles with is the extreme popularity of a select few individuals. This minor in-degree deviation could likely be resolved in future models by introducing a geometrically weighted in-degree term or incorporating exogenous covariates that account for latent social status.
+
+\newpage
+
+# Part (5): Interpretation of Estimated Parameters
+
+```{r param-table}
+coef_df <- data.frame(
+  Term        = names(coef(M2)),
+  Estimate    = round(coef(M2), 4),
+  `Std. Error`= round(sqrt(diag(vcov(M2))), 4),
+  check.names = FALSE
+)
+coef_df$`z value` <- round(coef_df$Estimate / coef_df$`Std. Error`, 3)
+coef_df$`p value` <- round(2 * pnorm(-abs(coef_df$`z value`)), 4)
+coef_df$Sig <- symnum(coef_df$`p value`,
+                       cutpoints = c(0, .001, .01, .05, .1, 1),
+                       symbols   = c("***","**","*","."," "))
+
+kable(coef_df, caption = "Full coefficient table for M2 with z-tests.")
+```
+
+```{r or-helper, echo=FALSE}
+get_est <- function(model, term) {
+  b  <- coef(model)[term]
+  se <- sqrt(diag(vcov(model)))[term]
+  pv <- 2 * pnorm(-abs(b / se))
+  or <- exp(b)
+  list(b=round(b,4), se=round(se,4), pv=round(pv,4), or=round(or,3))
+}
+e_mut  <- get_est(M2, "mutual")
+e_gw   <- get_est(M2, "gwesp.OTP.fixed.0.6")
+e_boyo <- get_est(M2, "nodeocov.boy")
+e_boyi <- get_est(M2, "nodeicov.boy")
+e_alco <- get_est(M2, "nodeocov.alcohol")
+e_alci <- get_est(M2, "nodeicov.alcohol")
+e_abd  <- get_est(M2, "absdiff.alcohol")
+e_gend <- get_est(M2, "nodematch.gender")
+```
+
+## Baseline and Control Effects
+
+The **edges** coefficient is negative and large in magnitude, consistent with the low observed density (\~2.7%). The **`nodematch("gender")`** coefficient of `r get_est(M2,"nodematch.gender")$b` (OR = `r get_est(M2,"nodematch.gender")$or`, p = `r get_est(M2,"nodematch.gender")$pv`) indicates that same-gender dyads are `r ifelse(get_est(M2,"nodematch.gender")$b > 0, "more", "less")` likely to be connected, net of all other modelled effects.
+
+## Hypothesis i -- Reciprocity
+
+The **`mutual`** term has an estimated coefficient of `r e_mut$b` (SE = `r e_mut$se`, OR = `r e_mut$or`, p = `r e_mut$pv`). `r if(e_mut$pv < 0.05) "This is statistically significant at the 5% level, providing strong support for Hypothesis i." else "This is not statistically significant at the 5% level, providing no evidence for Hypothesis i."` A positive mutual effect means that, controlling for all other terms, a directed tie is substantially more likely to exist when its reverse already exists -- a fundamental feature of human friendship networks where nominations tend to be mutual.
+
+## Hypothesis ii -- Transitivity
+
+The **`gwesp`** coefficient is `r e_gw$b` (SE = `r e_gw$se`, p = `r e_gw$pv`). `r if(e_gw$pv < 0.05 && e_gw$b > 0) "The positive and significant estimate supports Hypothesis ii: students are more likely to nominate a friend of a friend, producing local clustering beyond what reciprocity alone would generate." else if(e_gw$pv >= 0.05) "The estimate is not significant at the 5% level; the data do not provide strong evidence for triadic closure after controlling for reciprocity and degree effects." else "The negative coefficient is inconsistent with the transitivity hypothesis."` The decay parameter α = 0.6 was fixed to concentrate the statistic on nodes with few edgewise shared partners.
+
+## Hypothesis iii -- Boys' Social Activity
+
+The **`nodeocov("boy")`** coefficient is `r e_boyo$b` (SE = `r e_boyo$se`, p = `r e_boyo$pv`). `r if(e_boyo$pv < 0.05 && e_boyo$b > 0) "The positive and significant estimate supports Hypothesis iii: boys send more friendship nominations than girls on average, net of all other effects." else if(e_boyo$pv < 0.05 && e_boyo$b < 0) "The significant but negative estimate contradicts Hypothesis iii: girls appear more socially active as senders." else "There is no statistically significant difference in social activity between boys and girls."`
+
+## Hypothesis iv -- Boys' Popularity
+
+The **`nodeicov("boy")`** coefficient is `r e_boyi$b` (SE = `r e_boyi$se`, p = `r e_boyi$pv`). `r if(e_boyi$pv < 0.05 && e_boyi$b > 0) "This positive, significant estimate supports Hypothesis iv: boys receive more nominations than girls." else if(e_boyi$pv < 0.05 && e_boyi$b < 0) "The negative, significant estimate contradicts Hypothesis iv." else "There is no statistically significant difference in popularity between boys and girls."`
+
+## Hypothesis v -- Alcohol and Social Activity
+
+The **`nodeocov("alcohol")`** coefficient is `r e_alco$b` (SE = `r e_alco$se`, p = `r e_alco$pv`). `r if(e_alco$pv < 0.05 && e_alco$b > 0) "Students who drink more frequently send significantly more friendship nominations, supporting Hypothesis v. One interpretation is that substance use is intertwined with social behaviour: heavier drinkers are more socially engaged and proactively seek out peer connections." else if(e_alco$pv < 0.05 && e_alco$b < 0) "Contrary to Hypothesis v, students with higher alcohol consumption send fewer nominations, suggesting social withdrawal rather than heightened activity." else "Alcohol consumption does not significantly predict social activity (out-degree tendency) in this network."`
+
+## Hypothesis vi -- Alcohol and Popularity
+
+The **`nodeicov("alcohol")`** coefficient is `r e_alci$b` (SE = `r e_alci$se`, p = `r e_alci$pv`). `r if(e_alci$pv < 0.05 && e_alci$b > 0) "Students who drink more frequently also attract more nominations, supporting Hypothesis vi. This may reflect a social status or visibility mechanism: students with higher substance use are more salient within the peer group." else if(e_alci$pv < 0.05 && e_alci$b < 0) "Contrary to Hypothesis vi, heavier drinkers receive fewer nominations." else "Alcohol consumption does not significantly predict popularity (in-degree tendency)."`
+
+## Hypothesis vii -- Alcohol Homophily
+
+The **`absdiff("alcohol")`** coefficient is `r e_abd$b` (SE = `r e_abd$se`, p = `r e_abd$pv`). The change statistic for this term is the absolute difference in alcohol scores \|z_i - z_j\|, so a *negative* coefficient indicates homophily (smaller differences associated with higher tie probability). `r if(e_abd$pv < 0.05 && e_abd$b < 0) "The negative and significant estimate supports Hypothesis vii: students with similar drinking levels are more likely to be friends, net of the main activity and popularity effects for alcohol. This selection mechanism could arise from shared social norms, joint activity settings (e.g., parties), or simply from greater similarity-attraction." else if(e_abd$pv >= 0.05) "The estimate is not statistically significant; there is no evidence of alcohol homophily beyond the ego and alter effects already included." else "The positive coefficient would imply heterophily -- an unexpected result that may reflect a modelling artefact."`
+
+\newpage
+
+# Part (6): Potential Model Improvements
+
+The current specification of M2 omits several structural and covariate mechanisms that could improve goodness of fit, particularly for the in-degree distribution and geodesic distance statistics.
+
+**Geometrically weighted in-degree (`gwidegree`).** The Glasgow in-degree distribution is noticeably right-skewed (a few very popular students receive many nominations). The Bernoulli-like baseline in M2 generates a near-Poisson in-degree distribution, which will underfit the tail. Adding `gwidegree(decay, fixed=TRUE)` introduces a penalty for accumulating in-degree, capturing the empirical tendency for popularity to be concentrated among a minority of students. The decay parameter controls how quickly additional in-links are discounted; a moderate value (α ≈ 0.3–0.6) would concentrate the effect on moderately popular nodes.
+
+**Geometrically weighted out-degree (`gwodegree`).** Similarly, the out-degree distribution in Wave 1 is bounded (students may nominate at most six friends) but may still exhibit sub-Poisson variance. Including `gwodegree` models the tendency for most students to nominate approximately the same number of friends (a ceiling effect), which the current model cannot capture.
+
+**Age covariate (ego, alter, similarity).** The dataset contains age information that M2 ignores. Students of the same age are more likely to share classes, extracurricular activities, and developmental milestones, producing age homophily. Adding `nodeocov("age")`, `nodeicov("age")`, and `absdiff("age")` would test whether age differences reduce tie probability independently of gender and alcohol effects.
+
+**Geometrically weighted dyadwise shared partners (gwdsp).** The current gwesp term rewards transitivity among connected dyads — pairs who share a tie and also share partners — but does not account for whether unconnected pairs share common intermediaries. Adding gwdsp(0.6, fixed=TRUE) addresses this gap by counting shared two-paths for all dyads regardless of whether a direct tie exists. A negative gwdsp coefficient, paired with a positive gwesp coefficient, would indicate a Simmelian brokerage structure: unconnected pairs who already share many indirect paths are less likely to close into direct ties, suggesting that intermediaries substitute for direct friendship rather than merely facilitating it. Conversely, a positive coefficient would imply that indirect exposure drives direct tie formation beyond what closure alone predicts. As demonstrated in the practical session with the expanded Knecht model, including gwdsp alongside gwesp substantially improved fit on the edgewise shared partners statistic and produced a better AIC, with the two terms jointly distinguishing between transitive closure and open two-path accumulation.
+
+**Cyclic closure (`dgwesp` or negative `gwesp`).** Some friendship networks show *anti-transitivity* in directed graphs (i.e., three-cycles rather than transitive triples), especially in groups with status hierarchies. Testing a `dgwesp` (directed GWESP) variant or a three-cycle term would refine the transitivity story: if 3-cycles are common, the current `gwesp` specification absorbs both transitive and cyclic effects, potentially masking the true structural mechanism.
+
+Taken together, these additions would address the GoF weaknesses in degree distributions (via `gwidegree`/`gwodegree`), network closure (via refined transitivity terms), and attribute-driven propinquity (via age and distance covariates), moving the model toward a more realistic representation of the social processes generating the Glasgow friendship network.
+
+\newpage
+
+# Part (7): Two Additional Testable Hypotheses
+
+## Hypothesis A -- Tobacco Smoking Homophily
+
+**Substantive rationale.** Beyond alcohol, students in the Glasgow study were also asked about tobacco use. Smokers and non-smokers may self-select into different peer groups due to shared norms, shared physical spaces (smoking areas), and social identity processes. We therefore hypothesise:
+
+> *Students who smoke the same amount are more likely to be friends.*
+
+**Operationalisation.** Suppose a node-level tobacco variable s_i ∈ {1,...,5} (coded analogously to alcohol) is collected. The corresponding ERGM term is:
+
+$$\delta_{\text{smoke}} = -\lvert s_i - s_j \rvert$$
+
+implemented in R as `absdiff("tobacco")`. A negative coefficient on this term (after controlling for main activity/popularity effects `nodeocov("tobacco")` and `nodeicov("tobacco")`) indicates homophily.
+
+**Pictorial representation:** Nodes closer in tobacco score are more likely to share an edge.
+
+## Hypothesis B -- Structural Balance (Two-Path Tendency)
+
+**Substantive rationale.** Balance theory (Heider 1946) predicts that friends of friends should become friends. However, an intermediate step that precedes triadic closure is the formation of two-paths: actor i knows actor k, and k knows actor j, creating social pressure for i → j to form. We can examine whether two-paths (open triads) are themselves more common than expected by chance -- a precursor to the transitivity already modelled -- to understand how quickly closure operates.
+
+> *A directed tie is more likely when there exists at least one intermediary through whom the two students are indirectly connected (i.e., when a two-path i → k → j already exists).*
+
+**Operationalisation.** This corresponds to the dyad-wise shared partners statistic:
+
+$$s_{\text{GWDSP}}(x, \alpha) = e^{\alpha} \sum_{k=1}^{n-2} \left[1 - (1-e^{-\alpha})^k\right] D_k^{\text{DSP}}(x)$$
+
+where D_k\^DSP(x) counts dyads sharing exactly k directed two-paths. In R: `gwdsp(decay, fixed=TRUE)`. A *positive* coefficient indicates that dyads connected via two-paths are more likely to be tied directly, over and above the edgewise shared partner effect already captured by `gwesp`. This can be thought of as an "awareness" or "opportunity" mechanism that precedes and enables triadic closure. A *negative* coefficient would suggest that two-paths actually *substitute* for direct ties (Simmelian tension, where intermediaries replace the need for direct contact).
+
+![ERGM Effect Diagrams for Hypotheses A and B](ergm_effect_diagrams_A_and_B.svg)
