@@ -44,7 +44,7 @@ set.seed(42)
 DATA <- "../Glasgow/"
 ```
 
-# Data Preparation
+## Data Preparation
 
 ```{r load-data}
 # Read adjacency matrices with manynet
@@ -93,9 +93,9 @@ friendship_sna
 
 ---
 
-# Part (1): Change Statistic of `gwodegree`
+## Part (1): Change Statistic of `gwodegree`
 
-## (i) Analytical Derivation
+### (i) Analytical Derivation
 
 The GWD network statistic is defined as:
 
@@ -124,7 +124,7 @@ $$
 \end{aligned}
 $$
 
-## (ii) Plots of the Change Statistic
+### (ii) Plots of the Change Statistic
 
 ```{r change-stat-setup}
 delta_GWD <- function(k, alpha) (1 - exp(-alpha))^k
@@ -147,7 +147,7 @@ df_plot <- do.call(rbind, lapply(seq_along(alpha_vals), function(i) {
 }))
 ```
 
-### Negative decay values (one figure per value)
+#### Negative decay values (one figure per value)
 
 ```{r fig-neg-m1, fig.cap="Change statistic for alpha = -1."}
 df_sub <- df_plot |> filter(alpha == "-1")
@@ -175,7 +175,7 @@ ggplot(df_sub, aes(x = k, y = delta)) +
   theme_bw(base_size = 13)
 ```
 
-### Non-negative decay values (one combined figure)
+#### Non-negative decay values (one combined figure)
 
 ```{r fig-nonneg, fig.cap="Change statistic for all non-negative decay values. Different colours and linetypes distinguish alpha values."}
 df_nonneg <- df_plot |> filter(group == "non-negative")
@@ -191,7 +191,7 @@ ggplot(df_nonneg, aes(x = k, y = delta, colour = alpha, linetype = alpha)) +
   theme_bw(base_size = 13)
 ```
 
-## (iii) Main Takeaways
+### (iii) Main Takeaways
 
 The change statistic $\delta_{\text{GWD}}(k,\alpha)=(1-e^{-\alpha})^k$ reveals how the decay
 parameter $\alpha$ governs the marginal contribution of an additional out-edge to an
@@ -230,7 +230,7 @@ low-degree nodes.
 Negative $\alpha$ produces counter-intuitive alternating behaviour and should be avoided in
 substantive applications.
 
-## (iv) Choosing $\alpha$ for an Activity Effect
+### (iv) Choosing $\alpha$ for an Activity Effect
 
 An *activity* effect means that nodes who are already highly active (high out-degree) are *more*
 likely to send further nominations.
@@ -260,9 +260,9 @@ $\theta_{\text{GWD}}$ uninterpretable and estimation prone to degeneracy.
 
 ---
 
-# Part (2): Effect of the `gwodegree` Coefficient on the Out-Degree Distribution
+## Part (2): Effect of the `gwodegree` Coefficient on the Out-Degree Distribution
 
-## (i) M1: Edges-Only Reference Model
+### (i) M1: Edges-Only Reference Model
 
 ```{r m1, cache=TRUE}
 M1 <- ergm(friendship_sna ~ edges,
@@ -270,7 +270,7 @@ M1 <- ergm(friendship_sna ~ edges,
 summary(M1)
 ```
 
-## (ii) M2: Fix Decay = 0.3, Vary `gwodegree` Coefficient
+### (ii) M2: Fix Decay = 0.3, Vary `gwodegree` Coefficient
 
 The `gwodegree` coefficient is fixed via `offset()` while only the `edges` parameter is
 re-estimated, ensuring the expected network density matches the observed density.
@@ -301,7 +301,7 @@ screenreg(list(M1, M2a, M2b),
           caption = "Estimated edges coefficients. gwodegree coefficients are fixed via offset.")
 ```
 
-## (iii) Simulate 100 Networks and Plot Out-Degree Distributions
+### (iii) Simulate 100 Networks and Plot Out-Degree Distributions
 
 Following the practical, we use `ergm::simulate_formula()` with the `coef` argument to fix
 parameter values.
@@ -384,7 +384,7 @@ ggplot(df_sim, aes(x = factor(outdegree), y = count, fill = model)) +
         strip.text      = element_text(face = "bold"))
 ```
 
-## (iv) Comparison and Interpretation
+### (iv) Comparison and Interpretation
 
 The three models share the same observed density by construction (the `edges` coefficient is
 re-estimated in M2a/M2b to compensate for the `gwodegree` offset), yet they produce strikingly
