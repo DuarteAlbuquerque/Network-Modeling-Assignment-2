@@ -1,0 +1,514 @@
+---
+output:
+  pdf_document:
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff = 60))
+```
+
+# Task 3: Estimation and interpretation of SAOMs
+
+## Task 3.1.1
+
+We compute the Jaccard index to evaluate whether the data contain enough information to investigate the evolution of the friendship network.
+
+First we load the three friendship networks
+```{r}
+f1 <- as.matrix(read.csv("Glasgow/f1.csv", header = FALSE))
+f2 <- as.matrix(read.csv("Glasgow/f2.csv", header = FALSE))
+f3 <- as.matrix(read.csv("Glasgow/f3.csv", header = FALSE))
+```
+
+We can calculate the Jaccard index as follows:
+$J(t_i,t_i+1)=\frac{N_11}{N_01+N_10+N_11}$,
+where $t_i$ is the wave, and $N_11$ is the number of ties that are present in both waves, $N_10$ and $N_01$ are number of ties present only at wave $i$ and $i+1$ respectively.
+
+Now we create a function which takes the friendship networks and outputs their Jaccard index:
+
+```{r}
+jaccard <- function(A, B) {
+  N11 <- sum(A == 1 & B == 1)
+  N10 <- sum(A == 1 & B == 0)
+  N01 <- sum(A == 0 & B == 1)
+  N11 / (N11 + N10 + N01)
+}
+
+J12 <- jaccard(f1, f2)
+J23 <- jaccard(f2, f3)
+```
+
+The Jaccard index for wave 1 -> wave 2 is
+```{r, echo=FALSE}
+J12
+```
+
+and for wave 2 -> wave 3 is
+```{r, echo=FALSE}
+J23
+```
+
+We can also calculate the number of ties that changed during two consecutive networks.
+
+For the transition from wave 1 to wave 2 we have:
+```{r}
+sum(f1 == 0 & f2 == 1) + sum(f1 == 1 & f2 == 0)
+```
+
+And for the transition from wave 2 to wave 3 we have:
+```{r}
+sum(f2 == 0 & f3 == 1) + sum(f2 == 1 & f3 == 0)
+```
+
+\textbf{Comments:} Both wave transitions have Jaccard indices above the threshold of 0.3, (0.304 from wave 1 to wave 2 and 0.351 from wave 2 to wave 3) which indicates moderate similarity between the waves. If the Jaccard index was too low, then the two waves would be too different to have a well-identified continuous-time Markov process assumed by the SAOM. If the Jaccard index was too high, then that would mean too few changes to estimate the parameters from. The indices indicate moderate stability in the friendship network across waves, with enough tie changes to estimate the model parameters reliably. The 477 and 437 tie changes across the two intervals that we calculated provide enough variation to estimate the model. We observe a slight increase from 0.304 to 0.351, which shows that the transition from wave 2 to wave 3 is more stable than the transition from wave 1 to wave 2, however this difference is quite small. Overall, the data contain sufficient information to investigate the evolution of the friendship network with a SAOM.
+
+## Task 3.1.2
+
+We want to test the following three hypotheses:
+i. Students tend to be friends with popular pupils
+ii. Students tend to be friends with pupils with similar alcohol
+consumption to theirs
+iii. Students tend to be friends with students who live in the same
+neighbourhood (living nearby)
+
+```{r}
+library(RSiena)
+library(sna)
+library(parallel)
+
+source("printSiena.R")
+
+# Load data
+f1 <- as.matrix(read.csv("Glasgow/f1.csv", header = FALSE))
+f2 <- as.matrix(read.csv("Glasgow/f2.csv", header = FALSE))
+f3 <- as.matrix(read.csv("Glasgow/f3.csv", header = FALSE))
+
+demographic <- read.csv("Glasgow/demographic.csv", header = TRUE)
+alcohol <- as.matrix(read.csv("Glasgow/alcohol.csv", header = TRUE))
+logdistance <- as.matrix(read.csv("Glasgow/logdistance.csv", header = FALSE))
+
+# Create Siena dependent network object
+friendship <- sienaDependent(array(c(f1, f2, f3), dim = c(129, 129, 3)))
+
+# Covariates
+gender <- coCovar(demographic$gender)
+age <- coCovar(demographic$age)
+alcoholCov <- varCovar(alcohol)
+distance <- coDyadCovar(logdistance)
+
+# Create Siena data object
+mydata <- sienaDataCreate(friendship, gender, age, alcoholCov, distance)
+
+# Start model specification
+myeff <- getEffects(mydata)
+
+# Basic endogenous controls
+myeff <- includeEffects(myeff, recip, transTrip, cycle3, name = "friendship")
+
+# Basic exogenous controls: gender
+myeff <- includeEffects(myeff, egoX, altX, sameX,
+                        interaction1 = "gender",
+                        name = "friendship")
+
+# Basic exogenous controls: age
+myeff <- includeEffects(myeff, egoX, altX, simX,
+                        interaction1 = "age",
+                        name = "friendship")
+
+# Hypothesis i:
+myeff <- includeEffects(myeff, inPop, 
+                        name = "friendship")
+
+# Hypothesis ii:
+myeff <- includeEffects(myeff, egoX, altX, simX,
+                        interaction1 = "alcoholCov",
+                        name = "friendship")
+
+# Hypothesis iii:
+myeff <- includeEffects(myeff, X, 
+                        interaction1 = "distance", 
+                        name = "friendship")
+
+myeff
+```
+
+Here, we specify a SAOM where the friendship network is the dependent variable and evolves over time. For the endogenous variables in the network, we include effects for reciprocity, transitive triplets and three-cycles. Three-cycles are included alongside transitive triplets to separate hierarchical transitivity from cyclic closure patterns. We also include the exogenous covariates such as gender and age.
+To test the hypotheses, for hypothesis i we include the indegree popularity effect to see whether students tend to form ties with more popular students. For hypothesis ii, we include the variable of alcohol similarity to test whether students tend to form ties with others who have similar alcohol consumption levels. The ego and alter effects for alcohol are included as controls to account for the possibility that students with higher or lower alcohol consumption are systematically more or less socially active or popular independently of similarity. For hypothesis iii, we use the dyadic covariate for log-distance to test whether the geographical proximity increases the likelihood of students forming a tie.
+
+
+## Task 3.1.3
+
+We estimate the model:
+
+```{r}
+# Estimate the model
+myAlgorithm <- set_algorithm_saom(seed = 1908, n3 = 3000, nsub = 4)
+
+modelEv <- siena(data = mydata, effects = myeff, returnDeps = TRUE,
+                 control_algo = myAlgorithm)
+
+# Results
+summary(modelEv)
+
+# Check convergence
+modelEv$tconv.max
+```
+
+
+Comments:
+
+The SAOM was estimated using a stochastic approximation algorithm with 3000 phase 3 simulations. The overall maximum convergence ratio is 0.1646, which is below 0.25 and therefore indicates satisfactory convergence.
+Also, good convergence is indicated by the t-ratios being close to zero.
+
+Now let's look at the parameters:
+The estimated parameters in the model indicate some important patterns in the evolution of the friendship network.
+The estimate for density (outdegree) is -3.08 (with a standard error of 0.129). This is a significant negative outdegree density, indicating that the networks are sparse and therefore students tend to not form many ties.
+The estimate for reciprocity is 2.22 (with a standard error of 0.104). This is a strong positive estimator, which indicated that students strongly tend to reciprocate friendships.
+The estimate for transitive triplets is 0.690 (with a standard error of 0.044). This indicates a strong triadic closure, which means that students are more likely to be tied to friends of their friends.
+The estimate for 3-cycles is -0.468 (with a standard error of 0.086), which indicates that the network is more hierarchical than cyclic.
+The gender homophily effect is strongly positive, since the estimate is 0.900 (with a standard error of 0.100), indicating that students strongly prefer same-gender friendships. 
+
+Now, looking at the three hypotheses:
+The indegree popularity estimate is -0.081 with a standard error of 0.019. So the indegree effect is negative and statistically significant, which suggests that students are less likely to form ties with students who are popular. This means that Hypothesis i is not supported by the data.
+The alcohol similarity estimate is 0.638 with a standard error of 0.163. This shows that the alcohol similarity effect is positive and significant, indicating that students tend to form friendships with others that have similar alcohol consumption levels. This supports Hypothesis ii.
+The distance estimate is -0.157 with a standard error of 0.045. This shows a significant negative effect, indicating that students are more likely to form friendships when they live closer to each other, supporting Hypothesis iii.
+
+The remaining control effects for age and gender are significant, confirming that they are important cofounders to account for in the model.
+
+
+## Task 3.1.4
+
+We evaluate the goodness of fit of the estimated model using the following auxiliary statistics: indegree distribution, outdegree distribution, triad census and geodesic distance.
+
+
+```{r gof-task-3-1-4, message=FALSE, warning=FALSE, fig.width=10, fig.height=8}
+# Geodesic distance function
+GeodesicDistribution <- function(
+    i, data, sims, period, groupName,
+    varName, levls = c(1:5, Inf), cumulative = TRUE
+) {
+  x <- networkExtraction(i, data, sims, period, groupName, varName)
+  require(sna)
+  a <- sna::geodist(symmetrize(x))$gdist
+  
+  if (cumulative) {
+    gdi <- sapply(levls, function(i) sum(a <= i))
+  } else {
+    gdi <- sapply(levls, function(i) sum(a == i))
+  }
+  
+  names(gdi) <- as.character(levls)
+  gdi
+}
+
+# Use parallel computation
+cl <- makeCluster(4)
+
+# Indegree distribution
+gofEvId <- test_gof(
+  modelEv,
+  verbose = FALSE,
+  varName = "friendship", IndegreeDistribution,
+  cluster = cl
+)
+
+# Outdegree distribution
+gofEvOd <- test_gof(
+  modelEv,
+  verbose = FALSE,
+  varName = "friendship", OutdegreeDistribution,
+  cluster = cl
+)
+
+# Triad census
+gofEvTC <- test_gof(
+  modelEv,
+  verbose = FALSE,
+  varName = "friendship", TriadCensus,
+  cluster = cl
+)
+
+# Geodesic distance
+gofEvGD <- test_gof(
+  modelEv,
+  verbose = FALSE,
+  varName = "friendship", GeodesicDistribution
+)
+
+stopCluster(cl)
+
+# Plots
+plot(gofEvId)
+plot(gofEvOd)
+plot(gofEvGD)
+plot(gofEvTC, center = TRUE, scale = TRUE)
+```
+
+Let's look at the plots:
+Looking at the plot for the goodness of fit of the indegree distribution, we observe that the red line, i.e. the observed network is almost entirely inside the grey distributions, which are the simulated networks, across all indegree levels. This shows that the model fits the indegree distribution very well and successfully captures the distribution of the popularity in the network. Also, the high p-value of 0.829 indicates that there is no significant deviation between the observed distributions and the simulated ones.
+In contrast, the plot for the goodness of fit of the outdegree distribution we see a poor model fit. The red line (observed network) is mostly outside the range of grey distributions (simulated distributions). This suggests that the model doesn't adequately represent the distribution of outgoing ties among students. This is likely due to the lack of an outdegree effect in the model. The p-value of 0 further supports these observations and indicates a significant discrepancy between the observed and simulated distributions and therefore we have strong evidence of model misfit for the outdegree distribution.
+In the plot for the goodness of fit of the geodesic distance distribution we see a poor model fit. The red line (observed network) is mostly outside the range of grey distributions (simulated distributions) and the observed values are consistently lower than the simulated values. More specifically, the observed network seems to have shorter path lengths between actors compared to the simulated one. This suggests that the model doesn't adequately represent the geodesic distance distribution. This is likely due to the lack of a connectivity effect which would capture how students connect across different social groups. The p-value of 0 further supports these observations and indicates a significant discrepancy between the observed and simulated distributions and therefore we have strong evidence of model misfit for the geodesic distance distribution.
+The plot for goodness of fit of the triad census also shows a poor fit, since several observed triad counts are outside the range of the simulated distributions. The p-value of 0 further supports that the model doesn't accurately represent the trad census distribution and doesn't fully capture all the aspects of the local network structure, even though it includes transitive triplets and three-cycles.
+Overall, we see that although the model successfully captures the distribution of popularity, it fails to reproduce the outdegree, the geodesic distance and the triad census distributions. This suggests that additional effects may be required to capture the full structure of the network.
+
+## Task 3.1.5
+
+To evaluate the hypotheses i-iii, we examine the estimated coefficients and their significance. The statistical significance can be measured by dividing the estimated coefficient by its standard error.
+
+For Hypothesis i, we were testing whether students tend to be friends with popular pupils. Our results showed that the indegree popularity effect is negative and statistically significant, indicating that students don't tend to form ties with pupils who are more popular. This suggests that students tend to avoid highly popular pupils, or that the formation of ties is not driven by popularity. Therefore, Hypothesis i is not supported by the data.
+
+For Hypothesis ii, we were testing whether students tend to be friends with pupils with similar alcohol consumption levels. To do this, we looked at the alcohol similarity effect. The estimate for this coefficient is positive and statistically significant, indicating that students are more likely to form ties with other students whose alcohol consumption levels are similar to theirs. This shows evidence for homophily based on alcohol consumption and therefore Hypothesis ii is supported by the data,
+
+For Hypothesis iii, we were testing whether student tend to be friends with students who live in the same neighbourhood. For this, we examined the effect of log-distance between student's homes. From our results, the estimated coefficient is negative and statistically significant, indicating that that students are more likely to form ties with pupils whose distance between their homes is shorter. This supports the idea that physical proximity increases the probability of forming a friendship and therefore Hypothesis iii is supported by the data.
+
+Overall, the results show that the formation of ties between students is driven by similarity in behaviours such as alcohol consumption as well as geographical proximity, rather than popularity. Students showed a tendency to befriend others who had similar alcohol consumption levels and lived closer to them, while there is no evidence to support the hypothesis that students are more likely to form ties with more popular pupils. In general, this indicates a significance of homophily in the formation of student friendships.
+
+
+## Task 3.2.1
+We investigate the co-evolution of friendship and alcohol consumption, by using the model specification developed in (1).
+
+```{r}
+# Dependent variables
+friendship <- sienaDependent(array(c(f1, f2, f3), dim = c(129, 129, 3)))
+alcoholDep <- sienaDependent(alcohol, type = "behavior")
+
+# Covariates
+gender <- coCovar(demographic$gender)
+age <- coCovar(demographic$age)
+distance <- coDyadCovar(logdistance)
+
+# Siena data object
+mydataCoev <- sienaDataCreate(friendship, alcoholDep, gender, age, distance)
+
+# Effects object
+myeffCoev <- getEffects(mydataCoev)
+
+## Selection part: friendship evolution -----------------------------------
+
+# Basic endogenous controls
+myeffCoev <- includeEffects(myeffCoev, recip, transTrip, cycle3, 
+                            name = "friendship")
+
+# Gender controls
+myeffCoev <- includeEffects(myeffCoev, egoX, altX, sameX, 
+                            interaction1 = "gender", 
+                            name = "friendship")
+
+# Age controls
+myeffCoev <- includeEffects(myeffCoev, egoX, altX, simX, 
+                            interaction1 = "age",
+                            name = "friendship")
+
+# Hypothesis i:
+myeffCoev <- includeEffects(myeffCoev, inPop, 
+                            name = "friendship")
+
+# Hypothesis ii:
+myeffCoev <- includeEffects(myeffCoev, egoX, altX, simX, 
+                            interaction1 = "alcoholDep", 
+                            name = "friendship")
+
+# Hypothesis iii:
+myeffCoev <- includeEffects(myeffCoev, X, 
+                            interaction1 = "distance", 
+                            name = "friendship")
+
+
+# Basic behavioural controls
+myeffCoev <- includeEffects(myeffCoev, linear, quadratic, 
+                            name = "alcoholDep")
+
+# Hypothesis iv: 
+myeffCoev <- includeEffects(myeffCoev, indeg, 
+                            name = "alcoholDep", 
+                            interaction1 = "friendship")
+
+# Hypothesis v:
+myeffCoev <- includeEffects(myeffCoev, avAlt, 
+                            name = "alcoholDep", 
+                            interaction1 = "friendship")
+
+myeffCoev
+```
+
+For the behaviour part of the model, we include linear and quadratic shape effects as basic controls for the distribution of alcohol consumption. The linear effect captures the overall trend in alcohol consumption, while the quadratic effect captures whether students tend to avoid extreme values. To test hypothesis iv, we include the indegree effect on alcohol consumption, which captures whether students who receive many friendship nominations tend to increase their alcohol consumption level. To test hypothesis v, we include the average alter effect, which captures whether students tend to adjust their alcohol consumption towards the average level of their friends, directly operationalizing peer influence.
+
+## Task 3.2.2
+
+We estimate the model:
+
+```{r}
+# Estimation algorithm
+myAlgorithm <- set_algorithm_saom(seed = 1908, n3 = 3000, nsub = 4)
+
+# Estimate co-evolution model
+modelCoev <- siena(data = mydataCoev,
+                   effects = myeffCoev,
+                   returnDeps = TRUE,
+                   control_algo = myAlgorithm)
+
+# Results
+summary(modelCoev)
+
+# Check convergence
+modelCoev$tconv.max
+```
+
+
+The co-evolution model was estimated using a stochastic approximation algorithm with 3000 phase 3 simulations. The overall maximum convergence ratio is 0.1711, which is below 0.25 and therefore indicates satisfactory convergence.
+Also, good convergence is indicated by the t-ratios being close to zero, suggesting that the estimation procedure reproduced the observed network bahavioural statistics well.
+
+Now let's look at the parameters:
+Overall, the network parameters appear to be quite consistent with the parameters in the friendship-only model. The outdegree parameter estimate is negative (-3.10, with standard error 0.13), which indicates that the friendship network is sparse. The reciprocity parameter estimate is positive and statistically significant (2.19, with standard error 0.11), indicating that students tend to reciprocate their friendships. The transitive triplets estimate is also positive and significant (0.68, with standard error 0.04), indicating triadic closure, while the three-cycle effect estimate is negative (-0.46, with standard error 0.08) and suggests a more hierarchical than cyclic structure.
+
+The indegree popularity effect estimate is negative and significant (-0.08, with standard error 0.02), indicating that students are less likely to from ties with popular students. The distance effect estimate is also negative and significant (-0.16, with standard error 0.05), suggesting that students are more likely to form ties with others who live close to them. The  gender effect is positive and significant (0.90 with standard error 0.10), indicating strong gender homophily. The alcohol similarity estimate is also positive and significant (1.20, with standard error 0.36), showing that students tend to select friends with similar alcohol consumption levels.
+
+Now looking at the behaviour dynamics:
+The quadratic shape effect is negative and significant (-0.42 with standard error 0.14), suggesting that students are less likely to have extreme alcohol consumption levels, while the linear shape effect (0.16, with standard error 0.24) is not statistically significant, meaning there is no overall directional trend in alcohol consumption.
+The indegree effect on alcohol consumption is positive but not significant (0.07, with standard error 0.07), indicating that we have no clear evidence that more popular students drink more. In contrast, the average alter effect is positive and significant (1.03, with standard error 0.40), showing that we have evidence  that students tend to adjust their alcohol consumption to that of their friends.
+
+
+
+
+## Task 3.2.3
+
+We evaluate the goodness of fit of the estimated model using the following auxiliary statistics: indegree distribution, outdegree distribution, triad census and geodesic distance.
+
+```{r}
+## Goodness of fit
+
+# Geodesic distance function
+GeodesicDistribution <- function(
+    i, data, sims, period, groupName,
+    varName, levls = c(1:5, Inf), cumulative = TRUE
+) {
+  x <- networkExtraction(i, data, sims, period, groupName, varName)
+  require(sna)
+  a <- sna::geodist(symmetrize(x))$gdist
+  
+  if (cumulative) {
+    gdi <- sapply(levls, function(i) sum(a <= i))
+  } else {
+    gdi <- sapply(levls, function(i) sum(a == i))
+  }
+  
+  names(gdi) <- as.character(levls)
+  gdi
+}
+
+cl <- makeCluster(4)
+clusterEvalQ(cl, library(RSiena))
+clusterEvalQ(cl, library(sna))
+clusterExport(cl, "GeodesicDistribution")
+
+gofId <- test_gof(
+  modelCoev,
+  auxiliaryFunction = IndegreeDistribution,
+  varName = "friendship",
+  tested = FALSE,
+  cluster = cl
+)
+
+gofOd <- test_gof(
+  modelCoev,
+  auxiliaryFunction = OutdegreeDistribution,
+  varName = "friendship",
+  tested = FALSE,
+  cluster = cl
+)
+
+gofTC <- test_gof(
+  modelCoev,
+  auxiliaryFunction = TriadCensus,
+  varName = "friendship",
+  tested = FALSE,
+  cluster = cl
+)
+
+gofGD <- test_gof(
+  modelCoev,
+  auxiliaryFunction = GeodesicDistribution,
+  varName = "friendship",
+  tested = FALSE
+)
+
+gofBeh <- test_gof(
+  modelCoev,
+  auxiliaryFunction = BehaviorDistribution,
+  varName = "alcoholDep",
+  tested = FALSE,
+  cluster = cl
+)
+
+stopCluster(cl)
+
+# Plots
+plot(gofId)
+plot(gofOd)
+plot(gofGD)
+plot(gofTC, center = TRUE, scale = TRUE)
+plot(gofBeh)
+```
+
+Looking at the plot for the goodness of fit of the indegree distribution, we observe that the red line, i.e. the observed network is almost entirely inside the grey distributions, which are the simulated distributions, across all indegree levels. This shows that the model fits the indegree distribution very well and successfully captures the distribution of the popularity in the network. Also, the high p-value of 0.84 further confirms that there is no significant deviation between the observed distributions and the simulated ones.
+In constrast, the plot for the goodness of fit of the outdegree distribution we see a poor model fit. The observed network (red line) lies mostly outside the range of simulated distributions (gray bands). This suggests that the model doesn't adequately represent the distribution of outgoing ties among students. The p-value of 0 further supports these observations and indicates a significant discrepancy between the observed and simulated distributions and therefore we have strong evidence of model misfit for the outdegree distribution.
+In the plot for the goodness of fit of the geodesic distance distribution we see a poor model fit. The observed network (red line) is mostly outside the range of simulated distributions (gray bands) and the observed values are consistently lower than the simulated values. More specifically, the observed network seems to have shorter path lengths between students compared to the simulated one. This suggests that the model doesn't adequately represent the geodesic distance distribution. The p-value of 0 further supports these observations and indicates a significant discrepancy between the observed and simulated distributions and therefore we have strong evidence of model misfit for the geodesic distance distribution.
+The plot for goodness of fit of the triad census also shows a poor fit, since several observed triad counts (red line) are outside the range of the simulated distributions (gray bands). The p-value of 0 further supports that the model doesn't accurately represent the triad census distribution and doesn't fully capture all the aspects of the local network structure, even though it includes transitive triplets and three-cycles.
+Lastly, the plot for the goodness of fit for the behavior distribution shows that the observed values (red line) lie within the range of the simulated distributions (gray bands) across all levels of alcohol consumption. This shows that the model successfully captures the distribution of alcohol consumption among students in the network. Also, the high p-value of 0.523 further confirms that there is no significant deviation between the observed distributions and the simulated ones. Therefore, the model provides a very good fit for the behavioural component.
+Overall, we see that although the model successfully captures the distribution of popularity and bahaviour, it fails to reproduce the outdegree, the geodesic distance and the triad census distributions. This suggests that additional effects may be required to capture the full structure of the network.
+Comparing these results to the goodness of fit of the friendship-only model from 3.1.4, the co-evolution model performs similarly overall. The indegree fit improves slightly, however the outdegree, geodesic distance and triad census remain poorly fitted in both models, indicating that these are persistent structural issues.
+
+
+## Task 3.2.4
+
+To evaluate the hypotheses iv and v, we examine the effects of alcohol consumption in the co-evolution model.
+For Hypothesis iv, we were testing whether popular students tend to increase maintain their level of alcohol consumption. To do this, we look at the estimate for the indegree effect on alcohol behavious. From our results, the estimated coefficient was positive (0.07), but it was not statistically significant (the standard error was 0.07). This means that there is no clear evidence to support that popularity increases alcohol consumption and therefore hypothesis iv is not supported by the data.
+For Hypothesis v, we were testing whether students tend to adjust their alcohol consumption to that of their friends. To do this, we look at the average alter effect. The estimated coefficent is positive (1.03) and statistically significant (with a standard error of 0.40). This indicates that students tend to adjust their alcohol consumption levels towards the average alcohol consumption level of their friends. This means that we have strong evidence of students influencing each other in alcohol consumption, and therefore hypothesis v is supported by the data.
+Comparing the results above with the results from hypotheses i-iii from task 3.1, we observe that the conclusions are quite similar between the two models. In both the selection-only model and the co-evolution model, the indegree popularity effect is negative and statistically significant, indicating that students do not tend to form friendships with popular pupils. Similarly, the alcohol similarity effect remains positive and significant, suggesting that students tend to for ties with students that have similar alcohol consumption levels to them. The distance effect also remains negative and significant, showing that students tend to form friendships with students that live closer to them.
+However, these effects do differ slightly in magnitude between the two models. For example, when we look at the alcohol similarity effect, it is stronger in the co-evolution model. This indicates that when behavioural dynamics are accounted for, similarity in alcohol consumption is more important in forming ties with other students that in the selection-only model.
+The key difference between the two models is that in the selection-only model, although we could observe a significant effect of similarities in alcohol consumption on the formation of friendships between students, we were not able to distinguish whether the similarity in alcohol consumption reflected a tendency to select similar friends or a tendency for friends to become more similar over time. With the co-evolution model, we could make that distinguish and from the results, we observed that students both choose friends with similar alcohol consumption, but also adjust their behaviour in alcohol consumption to match that of their friends.
+Overall, the results of the models suggest that homophily and social influence both play important roles in forming friendships, while popularity does not appear to drive either friendship formation or alcohol consumption.
+
+
+## Task 3.2.5
+
+From the estimates co-evolution model, we find evidence for both selection and influence processes in the evolution of friendships and alcohol consumption.
+Regarding selection processes, we observed that the alcohol similarity effect is positive and statistically significant, indicating that students tend to form ties with pupils that have similar alcohol consumption levels to them. Also, the geographical proximity and gender effects were also shown to be significant. This suggests that homophily plays an important role in the formation of frienships.
+Additionally, regarding influence processes, the alter effect on alcohol consumption is positive and statistically significant, indicating that students tend to adjust their alcohol consumption levels to that of their friends. This means that once friendships are formed, students tend to be influenced by their friends and adjust their behaviour to match that of their friends.
+As we saw, there was no evidence that popularity affects alcohol consumption, as the indegree effect on alcohol behaviour was not statistically significant. However, the indegree effect in the friendship network is negative and significant, indicating that students are less likely to form ties with already popular peers. This suggests that popularity does not play an important role in behavioural influence or positive selection in this network. Influence operates mainly through students' similarities, rather than their popularity status in the network.
+Overall, the results shows that we have evidence for both selection and influence processes, as students tended to form friendships with students similar to them, but they also tended to adjust their behaviour according to match that of their friends. This shows that it is important that we consider both selection and influence processes simultaneously, because if we do not, then we may fail to reach correct conclusions about the role of similarity and social influence in the network and behavioural dynamics.
+
+
+## Task 3.3
+
+From the previous parts of this task, the goodness of fit results for the co-evolution model showed that the model reproduced well the indegree and alcohol behaviour distributions. However, the model fit for the outdegree distribution, the geodesic distances and local structure configurations such as triad census, was poor. Therefore, the model could be improved by adding new effects so that geodesic distances and degree distributions might be better represented.
+The poor model fit for the outdegree distribution suggests that some students are much more socially active than others and the current model doesn't account for this variation. Therefore, to improve the fit of the degree distribution, and specifically the outdegree distribution, we could include an outdegree activity effect. Some students are naturally more active in seeking friendships than others, and the current model does not account for this variation.
+Also, we could include effects such as outdegree popularity and indegree activity, which would help the model capture the dependence between students' activity and popularity better.
+These effects could help capture the differences between the number of friendship nominations that students send, but also help represent how popularity influences the likelihood of receiving ties, which may not be fully captured just by the indegree popularity effect.
+The poor model fit of the geodesic distances distribution suggests that the observed network is more tightly connected than the simulated ones. In order to improve the representation of geodesic distances, we could add effects that capture broader network connectivity. This could be covariates such as students sharing classes or extracurricular activities, since students that interact more frequently within shared contexts are likely to form ties and reduce the distance between them. Since the model does not include those covariates it underestimates the  level of connectivity observed in the real network.
+
+
+## Task 3.4
+
+To further investigate the dynamics of friendship and alcohol consumption using SAOMs we could look at the following 2 hypotheses:
+
+\textbf{Hypothesis 1:} Higher alcohol consumption levels increase the likelihood of receiving friendship nominations.
+This hypothesis is based on the idea that engaging in certain behaviours such as alcohol consumption could increase social attractiveness and help in being included in social groups.
+To test this hypothesis, the alcohol consumption effect should be included as an alter effect in the friendship evaluation function in the following way:
+```{r eval=FALSE}
+includeEffects(myeff, altX, interaction1 = "alcoholDep", name = "friendship")
+```
+Then after estimating the model, a positive and statistically significant coefficient would indicate that students with higher alcohol consumption are more likely to be more popular.
+This effect could improve the model fit by capturing behavioural mechanisms influenceing popularity and hence help the model better represent the indegree distribution.
+
+\textbf{Hypothesis 2:} Students that attend the same classes are more likely to form friendships.
+This hypothesis is based on the idea that students who interact more often and happen to be in the same environments are more likely to communicate, develop social relationships and form friendship ties among them.
+For this hypothesis, we would have to collect data on whether two students attend a class together or not and construct a binary dyadic covariate which would indicate whether two students share at least one class (1=share at least one class, 0=otherwise). This could then be included in the friendship evaluation function as a dyadic covariate effect in the following way:
+
+```{r eval=FALSE}
+includeEffects(myeff, X, interaction1 = "sameClass", name = "friendship")
+```
+
+Then after estimating the model, a positive and statistically significant coefficient would indicate that sharing classes increases the likelihood of students forming a friendship tie.
+This effect could improve the model fit by capturing shared social contexts and hence improve the representation of geodesic distances.
