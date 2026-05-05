@@ -3423,3 +3423,333 @@ covariance/correlation matrix of X can be found using
 summary(ans) within R, or by using the 'verbose' option in Siena07.
  
 Total computation time 616.63 seconds.
+
+
+-----------------------------------
+New Analysis started.
+Date and time: 05/05/2026 00:01:26
+New results follow.
+-----------------------------------
+
+RSiena version 1.6.6 (20 Apr 26)
+
+
+@1
+Estimation by stochastic approximation algorithm.
+=================================================
+
+Current random number seed is 1908.
+Effects object used: effects 
+Model Type:
+ Standard actor-oriented model 
+Estimation method: conditional moment estimation.
+Conditioning variable is the total number of observed changes ("distance") 
+in the network variable.
+Distances for simulations are
+period   :   1   2
+distance :  477 437.
+Standard errors are estimated with the likelihood ratio method.
+Dolby method (regression on scores) is used.
+Initial value of gain parameter is  0.2000000.
+Reduction factor for gain parameter is  0.5000000.
+Number of subphases in Phase 2 is 4.
+
+Initial parameter values are 
+  0.1  Rate parameter                         7.4542
+  0.2  Rate parameter                         6.8293
+  1. eval:  outdegree (density)                            -1.6130
+  2. eval:  reciprocity                                     0.0000
+  3. eval:  transitive triplets                             0.0000
+  4. eval:  3-cycles                                        0.0000
+  5. eval:  indegree - popularity                           0.0000
+  6. eval:  distance                                        0.0000
+  7. eval:  gender alter                                    0.0000
+  8. eval:  gender ego                                      0.0000
+  9. eval:  same gender                                     0.0000
+ 10. eval:  age alter                                       0.0000
+ 11. eval:  age ego                                         0.0000
+ 12. eval:  age similarity                                  0.0000
+ 13. eval:  alcoholCov alter                                0.0000
+ 14. eval:  alcoholCov ego                                  0.0000
+ 15. eval:  alcoholCov similarity                           0.0000
+
+
+Values of target statistics are
+  1. Number of ties                                                     909.0000
+  2. Number of reciprocated ties                                        548.0000
+  3. Number of transitive triplets                                     1146.0000
+  4. 3-cycles                                                           328.0000
+  5. Sum of squared indegrees                                          4419.0000
+  6. Sum of ties x distance                                            -189.9997
+  7. Sum indegrees x gender                                             -37.6047
+  8. Sum outdegrees x gender                                            -22.6047
+  9. Same values on gender                                              814.0000
+ 10. Sum indegrees x age                                                 -0.4070
+ 11. Sum outdegrees x age                                               -20.1070
+ 12. Similarity on age                                                    5.9571
+ 13. Sum indegrees x alcoholCov                                         -17.9651
+ 14. Sum outdegrees x alcoholCov                                        -54.9651
+ 15. Similarity on alcoholCov                                            62.4488
+These were calculated from the data.
+
+ 15 parameters, 15 statistics
+
+Estimation of derivatives by the LR method (type 1).
+
+
+@2
+End of stochastic approximation algorithm, phase 3.
+---------------------------------------------------
+
+Total of 4999 iterations.
+Parameter estimates based on 1999 iterations,
+basic rate parameters as well as 
+convergence diagnostics, covariance and derivative matrices based on 3000 iterations.
+
+Information for convergence diagnosis.
+Averages, standard deviations, and t-ratios for deviations from targets:
+  1.   3.2153  38.7631   0.0829 
+  2.   2.7627  34.4540   0.0802 
+  3.  14.2450 180.7233   0.0788 
+  4.   3.9893  56.3462   0.0708 
+  5.  26.2860 372.0035   0.0707 
+  6.   0.0749  23.0492   0.0032 
+  7.  -0.3851  18.6786  -0.0206 
+  8.  -0.5321  19.5905  -0.0272 
+  9.   3.2683  36.9051   0.0886 
+ 10.  -0.0969   7.3756  -0.0131 
+ 11.   0.6332   8.6144   0.0735 
+ 12.   0.0552   4.7432   0.0116 
+ 13.  -1.5146  34.9771  -0.0433 
+ 14.  -1.1896  38.2481  -0.0311 
+ 15.   0.0981   6.5382   0.0150 
+
+Good convergence is indicated by the t-ratios being close to zero.
+
+Overall maximum convergence ratio =  0.1646 .
+
+
+
+@2
+Estimation Results.
+-------------------
+
+Regular end of estimation algorithm.
+Total of 4999 iteration steps.
+
+
+@3
+Estimates and standard errors
+                             
+Rate parameters:
+ 0.1  Rate parameter period 1    11.0285  (   1.0278)
+ 0.2  Rate parameter period 2     9.0751  (   0.8272)
+
+Other parameters:
+ 1. eval:  outdegree (density)                                    -3.0771  (   0.1286)
+ 2. eval:  reciprocity                                             2.2154  (   0.1038)
+ 3. eval:  transitive triplets                                     0.6900  (   0.0441)
+ 4. eval:  3-cycles                                               -0.4677  (   0.0858)
+ 5. eval:  indegree - popularity                                  -0.0811  (   0.0194)
+ 6. eval:  distance                                               -0.1573  (   0.0454)
+ 7. eval:  gender alter                                           -0.1682  (   0.1041)
+ 8. eval:  gender ego                                              0.1351  (   0.1064)
+ 9. eval:  same gender                                             0.9000  (   0.1004)
+10. eval:  age alter                                               0.1171  (   0.1166)
+11. eval:  age ego                                                -0.2146  (   0.1130)
+12. eval:  age similarity                                          0.0391  (   0.1855)
+13. eval:  alcoholCov alter                                        0.0299  (   0.0319)
+14. eval:  alcoholCov ego                                         -0.0221  (   0.0308)
+15. eval:  alcoholCov similarity                                   0.6376  (   0.1628)
+
+
+@3
+Covariance matrices
+                   
+Covariance matrix of estimates (correlations below diagonal):
+     0.017     -0.003      0.000      0.001     -0.001      0.000      0.001     -0.001     -0.009      0.000      0.001      0.000      0.000      0.000     -0.002
+    -0.207      0.011      0.002     -0.005      0.000      0.000      0.000      0.000      0.000      0.001     -0.001      0.001      0.000      0.000     -0.001
+    -0.013      0.338      0.002     -0.003      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+     0.083     -0.586     -0.775      0.007      0.000      0.000     -0.001      0.001      0.000      0.000      0.000     -0.001      0.000      0.000      0.000
+    -0.578      0.035     -0.300      0.045      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+    -0.044      0.043     -0.002      0.013      0.104      0.002      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+     0.042     -0.001      0.025     -0.091      0.150     -0.049      0.011     -0.008     -0.002      0.001      0.000      0.000     -0.001      0.000     -0.001
+    -0.095     -0.019     -0.054      0.104     -0.070      0.016     -0.736      0.011      0.002      0.000      0.000      0.000      0.000      0.000      0.001
+    -0.707     -0.033     -0.031      0.040     -0.003      0.011     -0.150      0.170      0.010      0.000      0.000      0.000      0.000      0.000      0.000
+    -0.024      0.089      0.045     -0.023      0.003      0.026      0.044     -0.010     -0.009      0.014     -0.001      0.003      0.000      0.000      0.000
+     0.057     -0.047      0.007     -0.009      0.009     -0.043      0.029     -0.001     -0.039     -0.080      0.013      0.001      0.000      0.000      0.000
+    -0.006      0.042      0.021     -0.050     -0.033     -0.025      0.001     -0.006      0.021      0.129      0.042      0.034      0.000      0.000     -0.001
+     0.044     -0.010     -0.027      0.072     -0.072      0.024     -0.151      0.006     -0.009      0.002      0.011     -0.030      0.001      0.000      0.000
+    -0.006      0.020      0.051     -0.053      0.029      0.019     -0.013     -0.078     -0.041     -0.013     -0.075     -0.043     -0.279      0.001      0.001
+    -0.094     -0.042     -0.050      0.030      0.037     -0.064     -0.036      0.056      0.023     -0.015     -0.022     -0.035      0.072      0.100      0.027
+
+Derivative matrix of expected statistics X by parameters and
+covariance/correlation matrix of X can be found using
+summary(ans) within R, or by using the 'verbose' option in Siena07.
+ 
+Total computation time 804.96 seconds.
+
+
+-----------------------------------
+New Analysis started.
+Date and time: 05/05/2026 00:53:30
+New results follow.
+-----------------------------------
+
+RSiena version 1.6.6 (20 Apr 26)
+
+
+@1
+Estimation by stochastic approximation algorithm.
+=================================================
+
+Current random number seed is 1908.
+Effects object used: effects 
+Model Type:
+ Standard actor-oriented model 
+Estimation method: conditional moment estimation.
+Conditioning variable is the total number of observed changes ("distance") 
+in the network variable.
+Distances for simulations are
+period   :   1   2
+distance :  477 437.
+Standard errors are estimated with the likelihood ratio method.
+Dolby method (regression on scores) is used.
+Initial value of gain parameter is  0.2000000.
+Reduction factor for gain parameter is  0.5000000.
+Number of subphases in Phase 2 is 4.
+
+Initial parameter values are 
+  0.1  Rate parameter                         7.4542
+  0.2  Rate parameter                         6.8293
+  1. eval:  outdegree (density)                            -1.6130
+  2. eval:  reciprocity                                     0.0000
+  3. eval:  transitive triplets                             0.0000
+  4. eval:  3-cycles                                        0.0000
+  5. eval:  indegree - popularity                           0.0000
+  6. eval:  distance                                        0.0000
+  7. eval:  gender alter                                    0.0000
+  8. eval:  gender ego                                      0.0000
+  9. eval:  same gender                                     0.0000
+ 10. eval:  age alter                                       0.0000
+ 11. eval:  age ego                                         0.0000
+ 12. eval:  age similarity                                  0.0000
+ 13. eval:  alcoholCov alter                                0.0000
+ 14. eval:  alcoholCov ego                                  0.0000
+ 15. eval:  alcoholCov similarity                           0.0000
+
+
+Values of target statistics are
+  1. Number of ties                                                     909.0000
+  2. Number of reciprocated ties                                        548.0000
+  3. Number of transitive triplets                                     1146.0000
+  4. 3-cycles                                                           328.0000
+  5. Sum of squared indegrees                                          4419.0000
+  6. Sum of ties x distance                                            -189.9997
+  7. Sum indegrees x gender                                             -37.6047
+  8. Sum outdegrees x gender                                            -22.6047
+  9. Same values on gender                                              814.0000
+ 10. Sum indegrees x age                                                 -0.4070
+ 11. Sum outdegrees x age                                               -20.1070
+ 12. Similarity on age                                                    5.9571
+ 13. Sum indegrees x alcoholCov                                         -17.9651
+ 14. Sum outdegrees x alcoholCov                                        -54.9651
+ 15. Similarity on alcoholCov                                            62.4488
+These were calculated from the data.
+
+ 15 parameters, 15 statistics
+
+Estimation of derivatives by the LR method (type 1).
+
+
+@2
+End of stochastic approximation algorithm, phase 3.
+---------------------------------------------------
+
+Total of 4999 iterations.
+Parameter estimates based on 1999 iterations,
+basic rate parameters as well as 
+convergence diagnostics, covariance and derivative matrices based on 3000 iterations.
+
+Information for convergence diagnosis.
+Averages, standard deviations, and t-ratios for deviations from targets:
+  1.   3.2153  38.7631   0.0829 
+  2.   2.7627  34.4540   0.0802 
+  3.  14.2450 180.7233   0.0788 
+  4.   3.9893  56.3462   0.0708 
+  5.  26.2860 372.0035   0.0707 
+  6.   0.0749  23.0492   0.0032 
+  7.  -0.3851  18.6786  -0.0206 
+  8.  -0.5321  19.5905  -0.0272 
+  9.   3.2683  36.9051   0.0886 
+ 10.  -0.0969   7.3756  -0.0131 
+ 11.   0.6332   8.6144   0.0735 
+ 12.   0.0552   4.7432   0.0116 
+ 13.  -1.5146  34.9771  -0.0433 
+ 14.  -1.1896  38.2481  -0.0311 
+ 15.   0.0981   6.5382   0.0150 
+
+Good convergence is indicated by the t-ratios being close to zero.
+
+Overall maximum convergence ratio =  0.1646 .
+
+
+
+@2
+Estimation Results.
+-------------------
+
+Regular end of estimation algorithm.
+Total of 4999 iteration steps.
+
+
+@3
+Estimates and standard errors
+                             
+Rate parameters:
+ 0.1  Rate parameter period 1    11.0285  (   1.0278)
+ 0.2  Rate parameter period 2     9.0751  (   0.8272)
+
+Other parameters:
+ 1. eval:  outdegree (density)                                    -3.0771  (   0.1286)
+ 2. eval:  reciprocity                                             2.2154  (   0.1038)
+ 3. eval:  transitive triplets                                     0.6900  (   0.0441)
+ 4. eval:  3-cycles                                               -0.4677  (   0.0858)
+ 5. eval:  indegree - popularity                                  -0.0811  (   0.0194)
+ 6. eval:  distance                                               -0.1573  (   0.0454)
+ 7. eval:  gender alter                                           -0.1682  (   0.1041)
+ 8. eval:  gender ego                                              0.1351  (   0.1064)
+ 9. eval:  same gender                                             0.9000  (   0.1004)
+10. eval:  age alter                                               0.1171  (   0.1166)
+11. eval:  age ego                                                -0.2146  (   0.1130)
+12. eval:  age similarity                                          0.0391  (   0.1855)
+13. eval:  alcoholCov alter                                        0.0299  (   0.0319)
+14. eval:  alcoholCov ego                                         -0.0221  (   0.0308)
+15. eval:  alcoholCov similarity                                   0.6376  (   0.1628)
+
+
+@3
+Covariance matrices
+                   
+Covariance matrix of estimates (correlations below diagonal):
+     0.017     -0.003      0.000      0.001     -0.001      0.000      0.001     -0.001     -0.009      0.000      0.001      0.000      0.000      0.000     -0.002
+    -0.207      0.011      0.002     -0.005      0.000      0.000      0.000      0.000      0.000      0.001     -0.001      0.001      0.000      0.000     -0.001
+    -0.013      0.338      0.002     -0.003      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+     0.083     -0.586     -0.775      0.007      0.000      0.000     -0.001      0.001      0.000      0.000      0.000     -0.001      0.000      0.000      0.000
+    -0.578      0.035     -0.300      0.045      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+    -0.044      0.043     -0.002      0.013      0.104      0.002      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000      0.000
+     0.042     -0.001      0.025     -0.091      0.150     -0.049      0.011     -0.008     -0.002      0.001      0.000      0.000     -0.001      0.000     -0.001
+    -0.095     -0.019     -0.054      0.104     -0.070      0.016     -0.736      0.011      0.002      0.000      0.000      0.000      0.000      0.000      0.001
+    -0.707     -0.033     -0.031      0.040     -0.003      0.011     -0.150      0.170      0.010      0.000      0.000      0.000      0.000      0.000      0.000
+    -0.024      0.089      0.045     -0.023      0.003      0.026      0.044     -0.010     -0.009      0.014     -0.001      0.003      0.000      0.000      0.000
+     0.057     -0.047      0.007     -0.009      0.009     -0.043      0.029     -0.001     -0.039     -0.080      0.013      0.001      0.000      0.000      0.000
+    -0.006      0.042      0.021     -0.050     -0.033     -0.025      0.001     -0.006      0.021      0.129      0.042      0.034      0.000      0.000     -0.001
+     0.044     -0.010     -0.027      0.072     -0.072      0.024     -0.151      0.006     -0.009      0.002      0.011     -0.030      0.001      0.000      0.000
+    -0.006      0.020      0.051     -0.053      0.029      0.019     -0.013     -0.078     -0.041     -0.013     -0.075     -0.043     -0.279      0.001      0.001
+    -0.094     -0.042     -0.050      0.030      0.037     -0.064     -0.036      0.056      0.023     -0.015     -0.022     -0.035      0.072      0.100      0.027
+
+Derivative matrix of expected statistics X by parameters and
+covariance/correlation matrix of X can be found using
+summary(ans) within R, or by using the 'verbose' option in Siena07.
+ 
+Total computation time 1105.09 seconds.
